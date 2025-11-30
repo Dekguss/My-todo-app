@@ -39,9 +39,21 @@ def get_tasks():
     if tasks_collection is None:
         return jsonify({'error': 'Database connection failed'}), 500
     try:
-        tasks = list(tasks_collection.find().sort('created_at', -1))
+        # Mengambil semua tugas dan mengurutkan berdasarkan tanggal terdekat
+        tasks = list(tasks_collection.find().sort('date', 1))  # 1 untuk ascending (terdekat ke terjauh)
+        
+        # Konversi ObjectId ke string dan format tanggal
+        current_date = datetime.now()
         for task in tasks:
             task['_id'] = str(task['_id'])
+            # Hitung selisih hari dari deadline
+            deadline = datetime.strptime(task['date'], '%Y-%m-%d')
+            days_left = (deadline - current_date).days
+            task['days_left'] = days_left
+        
+        # Urutkan berdasarkan days_left (terdekat ke terjauh)
+        tasks.sort(key=lambda x: x['days_left'])
+        
         return jsonify(tasks)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
