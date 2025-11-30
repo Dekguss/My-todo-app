@@ -1,16 +1,17 @@
-from app import app, vercel_handler
+from app import app
+import json
 
-def handler(request):
-    # Convert Vercel request to Flask request
-    from flask import Request
-    from werkzeug.wrappers import Request as WerkzeugRequest
-    
-    # Create a test request context
+def handler(event, context):
     with app.test_request_context(
-        path=request.get('path', '/'),
-        method=request.get('httpMethod', 'GET'),
-        headers=request.get('headers', {}),
-        query_string=request.get('queryStringParameters', {}),
-        json=request.get('body')
+        path=event.get('path', '/'),
+        method=event.get('httpMethod', 'GET'),
+        headers=event.get('headers', {}),
+        query_string=event.get('queryStringParameters', {}),
+        data=json.dumps(event.get('body', {})) if event.get('body') else None
     ):
-        return vercel_handler(request)
+        response = app.full_dispatch_request()
+        return {
+            'statusCode': response.status_code,
+            'headers': dict(response.headers),
+            'body': response.get_data(as_text=True)
+        }
