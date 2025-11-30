@@ -1,19 +1,17 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, jsonify, request, render_template
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from datetime import datetime
+import os
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
-# --- KONFIGURASI MONGODB ATLAS (ONLINE) ---
-CONNECTION_STRING = "mongodb+srv://dwiadnyana:041002Dekgus@cluster0.rv3yldr.mongodb.net/kuliah_db?retryWrites=true&w=majority&appName=Cluster0"
+# Konfigurasi MongoDB
+MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb+srv://dwiadnyana:041002Dekgus@cluster0.rv3yldr.mongodb.net/kuliah_db?retryWrites=true&w=majority')
 
-# Inisialisasi koneksi MongoDB
 try:
-    client = MongoClient(CONNECTION_STRING)
-    # Test koneksi
-    client.admin.command('ping')
-    db = client.get_database('kuliah_db')
+    client = MongoClient(MONGODB_URI)
+    db = client.get_database()
     tasks_collection = db['tasks']
     print("✅ Berhasil terhubung ke MongoDB Atlas!")
 except Exception as e:
@@ -21,27 +19,17 @@ except Exception as e:
     db = None
     tasks_collection = None
 
-# Middleware untuk mengecek koneksi database
-@app.before_request
-def check_db_connection():
-    if request.endpoint and request.endpoint != 'static' and not db:
-        return jsonify({'error': 'Database connection failed'}), 500
-
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# --- API ENDPOINTS ---
-
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
-    tasks = []
-    try:
-        for doc in tasks_collection.find().sort('created_at', -1):
-            doc['_id'] = str(doc['_id'])
-            tasks.append(doc)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    if not tasks_collection:
+        return jsonify({'error': 'Database connection failed'}), 500
+    tasks = list(tasks_collection.find().sort('created_at', -1))
+    for task in tasks:
+        task['_id'] = str(task['_id'])
     return jsonify(tasks)
 
 @app.route('/api/tasks', methods=['POST'])
