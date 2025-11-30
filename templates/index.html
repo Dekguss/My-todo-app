@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kerjaa!!!</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-10 font-sans">
+
+    <div class="max-w-3xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+        
+        <div class="bg-emerald-600 p-6 text-white">
+            <h1 class="text-2xl font-bold text-center">Rangkuman Beban Hidup</h1>
+            <p class="text-center text-emerald-100 text-sm mt-1">Jangan Lupa Istirahat Kawan!!</p>
+        </div>
+
+        <div class="p-6 border-b border-gray-200 bg-gray-50">
+            <form id="taskForm" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <input type="hidden" id="taskId"> 
+                
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Nama Tugas</label>
+                    <input type="text" id="taskName" required placeholder="Contoh: Laporan Akhir" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Matkul / Kegiatan</label>
+                    <input type="text" id="taskCategory" required placeholder="Contoh: Basis Data" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Deadline</label>
+                    <input type="date" id="taskDate" required 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+
+                <div class="md:col-span-4 flex justify-end">
+                    <button type="submit" id="submitBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-lg transition flex items-center">
+                        <i class="fas fa-plus mr-2"></i> Tambah
+                    </button>
+                    <button type="button" id="cancelBtn" onclick="resetForm()" class="hidden ml-2 bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg transition">
+                        Batal
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="flex border-b border-gray-200">
+            <button onclick="switchTab('active')" id="tabActive" class="w-1/2 py-4 text-center font-medium text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50">Tugas Aktif</button>
+            <button onclick="switchTab('completed')" id="tabCompleted" class="w-1/2 py-4 text-center font-medium text-gray-500 hover:text-emerald-600">Sudah Selesai</button>
+        </div>
+
+        <div class="p-6 min-h-[300px]">
+            <ul id="taskList" class="space-y-3"></ul> 
+            <div id="loader" class="text-center py-10 hidden"><i class="fas fa-spinner fa-spin text-2xl text-emerald-600"></i></div>
+        </div>
+    </div>
+
+    <script>
+        let tasks = [];
+        let currentTab = 'active'; 
+        let isEditing = false;
+
+        // --- FUNGSI API (Komunikasi ke Flask) ---
+
+        // 1. GET Data
+        async function fetchTasks() {
+            document.getElementById('loader').classList.remove('hidden');
+            const response = await fetch('/api/tasks');
+            tasks = await response.json();
+            document.getElementById('loader').classList.add('hidden');
+            renderTasks();
+        }
+
+        // 2. POST / PUT Data
+        document.getElementById('taskForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('taskName').value;
+            const category = document.getElementById('taskCategory').value;
+            const date = document.getElementById('taskDate').value;
+            const id = document.getElementById('taskId').value;
+
+            const payload = { name, category, date };
+
+            if (isEditing) {
+                // Update
+                await fetch(`/api/tasks/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                // Create
+                await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            resetForm();
+            fetchTasks(); 
+        });
+
+        // 3. Toggle Complete
+        async function toggleComplete(id, currentStatus) {
+            await fetch(`/api/tasks/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ completed: !currentStatus })
+            });
+            fetchTasks(); 
+        }
+
+        // 4. DELETE Data
+        async function deleteTask(id) {
+            if(confirm('Hapus tugas ini?')) {
+                await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+                fetchTasks();
+            }
+        }
+
+        // --- FUNGSI UI (Tampilan) ---
+
+        function renderTasks() {
+            const list = document.getElementById('taskList');
+            list.innerHTML = '';
+            
+            const filtered = tasks.filter(t => currentTab === 'active' ? !t.completed : t.completed);
+
+            filtered.forEach(task => {
+                const li = document.createElement('li');
+                // Perhatikan class di bawah:
+                // items-start pada mobile agar rapi, md:items-center pada desktop
+                li.className = `flex flex-col md:flex-row justify-between items-start md:items-center p-4 rounded-lg border-l-4 shadow-sm ${task.completed ? 'bg-green-50 border-green-500' : 'bg-white border-emerald-500'}`;
+                
+                const dateDisplay = new Date(task.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+                const strikeClass = task.completed ? 'line-through text-gray-400' : 'text-gray-800';
+
+                li.innerHTML = `
+                    <div class="flex items-center gap-4 w-full md:w-auto mb-2 md:mb-0">
+                        <input type="checkbox" onchange="toggleComplete('${task._id}', ${task.completed})" ${task.completed ? 'checked' : ''} 
+                            class="w-5 h-5 accent-emerald-600 cursor-pointer flex-shrink-0">
+                        <div class="${strikeClass}">
+                            <h3 class="font-bold text-lg leading-tight">${task.name}</h3>
+                            <div class="text-sm flex flex-wrap gap-2 mt-1">
+                                <span class="bg-blue-100 text-blue-800 px-2 rounded text-xs whitespace-nowrap"><i class="fas fa-book"></i> ${task.category}</span>
+                                <span class="bg-gray-100 text-gray-600 px-2 rounded text-xs whitespace-nowrap"><i class="far fa-calendar"></i> ${dateDisplay}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2 w-full md:w-auto justify-end mt-2 md:mt-0">
+                        <button onclick="editTask('${task._id}')" class="${task.completed ? 'hidden' : ''} text-blue-500 bg-blue-50 hover:bg-blue-100 p-2 rounded transition shadow-sm"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteTask('${task._id}')" class="text-red-500 bg-red-50 hover:bg-red-100 p-2 rounded transition shadow-sm"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function editTask(id) {
+            const task = tasks.find(t => t._id === id);
+            if (task) {
+                document.getElementById('taskName').value = task.name;
+                document.getElementById('taskCategory').value = task.category;
+                document.getElementById('taskDate').value = task.date;
+                document.getElementById('taskId').value = task._id;
+                
+                isEditing = true;
+                const btn = document.getElementById('submitBtn');
+                btn.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan';
+                btn.classList.replace('bg-emerald-600', 'bg-blue-600');
+                document.getElementById('cancelBtn').classList.remove('hidden');
+                
+                // Scroll ke form saat edit ditekan (UX)
+                document.getElementById('taskForm').scrollIntoView({behavior: 'smooth'});
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('taskForm').reset();
+            isEditing = false;
+            const btn = document.getElementById('submitBtn');
+            btn.innerHTML = '<i class="fas fa-plus mr-2"></i> Tambah';
+            btn.classList.replace('bg-blue-600', 'bg-emerald-600');
+            document.getElementById('cancelBtn').classList.add('hidden');
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            const activeBtn = document.getElementById('tabActive');
+            const completedBtn = document.getElementById('tabCompleted');
+            
+            const activeClass = "w-1/2 py-4 text-center font-medium text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50";
+            const inactiveClass = "w-1/2 py-4 text-center font-medium text-gray-500 hover:text-emerald-600";
+
+            if(tab === 'active') {
+                activeBtn.className = activeClass;
+                completedBtn.className = inactiveClass;
+            } else {
+                activeBtn.className = inactiveClass;
+                completedBtn.className = activeClass;
+            }
+            renderTasks();
+        }
+
+        fetchTasks();
+    </script>
+</body>
+</html>
