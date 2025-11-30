@@ -9,15 +9,26 @@ app = Flask(__name__, static_folder='static', static_url_path='')
 # Konfigurasi MongoDB
 MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb+srv://dwiadnyana:041002Dekgus@cluster0.rv3yldr.mongodb.net/kuliah_db?retryWrites=true&w=majority')
 
+# Inisialisasi koneksi
+client = None
+db = None
+tasks_collection = None
+
 try:
     client = MongoClient(MONGODB_URI)
-    db = client.get_database()
+    # Test koneksi
+    client.admin.command('ping')
+    db = client.get_database('kuliah_db')
     tasks_collection = db['tasks']
     print("✅ Berhasil terhubung ke MongoDB Atlas!")
 except Exception as e:
     print(f"❌ Gagal terhubung ke MongoDB: {e}")
-    db = None
-    tasks_collection = None
+
+# Middleware untuk mengecek koneksi database
+@app.before_request
+def check_db_connection():
+    if request.endpoint and request.endpoint != 'static' and client is None:
+        return jsonify({'error': 'Database connection failed'}), 500
 
 @app.route('/')
 def index():
@@ -25,12 +36,15 @@ def index():
 
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
-    if not tasks_collection:
+    if tasks_collection is None:
         return jsonify({'error': 'Database connection failed'}), 500
-    tasks = list(tasks_collection.find().sort('created_at', -1))
-    for task in tasks:
-        task['_id'] = str(task['_id'])
-    return jsonify(tasks)
+    try:
+        tasks = list(tasks_collection.find().sort('created_at', -1))
+        for task in tasks:
+            task['_id'] = str(task['_id'])
+        return jsonify(tasks)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/tasks', methods=['POST'])
 def add_task():
